@@ -58,16 +58,6 @@ class AsyncSpimexWebParser:
                 logger.info(f'Страница {page} загружена')
                 return html
 
-    async def fetch_page_(self, session, page):
-        url = f'{self.base_url}{page}'
-        task = asyncio.current_task()
-        async with session.get(url) as response:
-            if response.status == 200:
-                html = await response.text()
-                print(html)
-                logger.info(f'Страница {page} загружена')
-                return html
-
 
     @staticmethod
     async def get_links(session, page: int = 1):

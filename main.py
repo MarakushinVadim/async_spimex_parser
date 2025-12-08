@@ -13,7 +13,7 @@ if __name__ == '__main__':
         num = 1
         while num < 2:
             await asyncio.sleep(.5)
-            await asyncio.create_task(parser.fetch_page_(session=session, page=num))
+            await asyncio.create_task(parser.fetch_page(session=session, page=num))
 
             num += 1
         await parser.close_session()
