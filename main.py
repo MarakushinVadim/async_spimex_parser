@@ -1,35 +1,82 @@
 import asyncio
+import logging
+import os
+import time
+from asyncio import ALL_COMPLETED
 
 from sqlalchemy import MetaData
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 
+from config import DBConfig
 from db import init_db, add_data
 from models import Base
-from parser import AsyncSpimexWebParser, parse_exel, read_data
+from parser import AsyncSpimexWebParser, parse_exel, read_data, AsyncSpimexXlsDownloader
 
 if __name__ == '__main__':
     parser = AsyncSpimexWebParser()
-    DATABASE_URL = f'postgresql+asyncpg://user:password@localhost/dbname'
-    engine = create_async_engine(DATABASE_URL, echo=True)
+    downloader = AsyncSpimexXlsDownloader()
+    DATABASE_URL = DBConfig.DB_URL
+    engine = create_async_engine(DATABASE_URL, echo=True, future=True, pool_size=20, max_overflow=10)
     AsyncSessionLocal = sessionmaker(
         engine,
         class_=AsyncSession,
         expire_on_commit=False,
     )
     metadata = MetaData()
+    logger = logging.getLogger(__name__)
+
+
 
 
 
     async def main():
+        start_time = time.time()
+
+
+        session = await parser.open_session()
+        page = 1
+
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
-        # await init_db(engine)
-        parsed_data = await parse_exel('bulletin_file.xls')
-        trade_list = await read_data(parsed_data)
-        records = [asyncio.create_task(add_data(AsyncSessionLocal, data=data)) for data in trade_list]
-        await asyncio.gather(*records)
-        print(trade_list[0])
+
+        while True:
+            html = await parser.fetch_page(session, page)
+            links = await parser.get_links(html)
+            if links is None:
+                break
+
+            tasks = [asyncio.create_task(downloader.async_download_files(link, session)) for link in links]
+            await asyncio.gather(*tasks)
+            current_files = os.listdir('xls_files')[-len(tasks):]
+
+            parse_tasks = [asyncio.create_task(parse_exel('xls_files/' + file)) for file in current_files]
+            done, _ = await asyncio.wait(parse_tasks, return_when=ALL_COMPLETED)
+
+            trade_tasks = [asyncio.create_task(read_data(data.result())) for data in done]
+            done, _ = await asyncio.wait(trade_tasks, return_when=ALL_COMPLETED)
+
+            current_trade_data = []
+            for data in done:
+                current_trade_data.extend(data.result())
+
+            recording_tasks = [asyncio.create_task(add_data(AsyncSessionLocal, data=data)) for data in current_trade_data]
+            result = await asyncio.gather(*recording_tasks)
+            logger.info('Цикл успешно завершен')
+
+            page += 1
+
+        await parser.close_session()
+        end_time = time.time()
+        total_time = (end_time - start_time) / 60
+        print('время работы программы - ', total_time)
+
+
+        # parsed_data = await parse_exel('bulletin_file.xls')
+        # trade_list = await read_data(parsed_data)
+        # records = [asyncio.create_task(add_data(AsyncSessionLocal, data=data)) for data in trade_list]
+        # await asyncio.gather(*records)
+        # print(trade_list[0])
 
 
 

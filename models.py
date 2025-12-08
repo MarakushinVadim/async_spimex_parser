@@ -4,8 +4,6 @@ from datetime import datetime
 from sqlalchemy import String, Integer, DateTime
 from sqlalchemy.orm import declarative_base, Mapped, mapped_column
 
-Base = declarative_base()
-
 @dataclass(slots=True)
 class Trade:
     exchange_product_id: str
@@ -21,6 +19,8 @@ class Trade:
     created_on: datetime = datetime.now()
     updated_on: datetime = datetime.now()
 
+
+Base = declarative_base()
 
 
 class SpimexTradingResultsBase(Base):
